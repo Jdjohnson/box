@@ -180,6 +180,8 @@ export default function BoxApp() {
   const [currentRep, setCurrentRep] = useState(0);
   const [fillHeight, setFillHeight] = useState(0);
   const [fillTransition, setFillTransition] = useState("none");
+  const [strokeOffset, setStrokeOffset] = useState(400);
+  const [strokeTransition, setStrokeTransition] = useState("none");
   const [successParticles, setSuccessParticles] = useState(false);
 
   const audioRef = useRef<AudioEngine | null>(null);
@@ -215,6 +217,23 @@ export default function BoxApp() {
     // Audio + haptics
     if (!mutedRef.current) audioRef.current?.playTransition(phase.type);
     vibrate(phase.type === "inhale" || phase.type === "exhale" ? [30] : [10, 30, 10]);
+
+    // Trace line — one side per phase, resets each rep
+    const phaseIdx = phaseRef.current;
+    if (phaseIdx === 0) {
+      // New rep: reset instantly, then animate first side
+      setStrokeTransition("none");
+      setStrokeOffset(400);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setStrokeTransition(`stroke-dashoffset ${boxTime}s linear`);
+          setStrokeOffset(300);
+        });
+      });
+    } else {
+      setStrokeTransition(`stroke-dashoffset ${boxTime}s linear`);
+      setStrokeOffset(400 - (phaseIdx + 1) * 100);
+    }
 
     // Fill animation
     if (phase.type === "inhale") {
@@ -284,6 +303,8 @@ export default function BoxApp() {
     setCurrentPhase(0);
     setFillHeight(0);
     setFillTransition("none");
+    setStrokeOffset(400);
+    setStrokeTransition("none");
     sessionStartRef.current = Date.now();
     setState("running");
     setTimeout(() => runPhase(), 50);
@@ -307,6 +328,8 @@ export default function BoxApp() {
     clearTimers();
     setFillHeight(0);
     setFillTransition("none");
+    setStrokeOffset(400);
+    setStrokeTransition("none");
     setSuccessParticles(false);
     setState("idle");
   }, [clearTimers]);
@@ -967,25 +990,60 @@ export default function BoxApp() {
             height: "75vw",
             maxWidth: 360,
             maxHeight: 360,
-            border: `1px solid ${isActive ? "var(--border)" : "var(--border)"}`,
-            opacity: isActive ? 0.6 : 0.3,
-            transition: "opacity 0.5s",
-            overflow: "hidden",
           }}
         >
-          {/* Fill */}
+          {/* Static border */}
           <div
             style={{
               position: "absolute",
-              bottom: 0,
-              left: 0,
-              width: "100%",
-              background: "var(--accent)",
-              opacity: 0.06,
-              height: `${fillHeight}%`,
-              transition: fillTransition,
+              inset: 0,
+              border: "1px solid var(--border)",
+              opacity: isActive ? 0.6 : 0.3,
+              transition: "opacity 0.5s",
+              overflow: "hidden",
             }}
-          />
+          >
+            {/* Fill */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                width: "100%",
+                background: "var(--accent)",
+                opacity: 0.06,
+                height: `${fillHeight}%`,
+                transition: fillTransition,
+              }}
+            />
+          </div>
+
+          {/* Trace line SVG — draws one side per phase */}
+          <svg
+            viewBox="0 0 100 100"
+            fill="none"
+            preserveAspectRatio="none"
+            style={{
+              position: "absolute",
+              inset: -1,
+              width: "calc(100% + 2px)",
+              height: "calc(100% + 2px)",
+              opacity: isActive || isPaused ? 1 : 0,
+              transition: "opacity 0.4s",
+              overflow: "visible",
+            }}
+          >
+            <path
+              d="M 0 100 L 0 0 L 100 0 L 100 100 L 0 100"
+              stroke="var(--accent)"
+              strokeWidth="1.2"
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="square"
+              strokeDasharray="400"
+              strokeDashoffset={strokeOffset}
+              style={{ transition: strokeTransition }}
+            />
+          </svg>
         </div>
 
         {/* Pulse ring on phase change */}
