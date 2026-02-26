@@ -180,12 +180,13 @@ export default function BoxApp() {
   const [currentRep, setCurrentRep] = useState(0);
   const [fillHeight, setFillHeight] = useState(0);
   const [fillTransition, setFillTransition] = useState("none");
-  const [strokeOffset, setStrokeOffset] = useState(4);
-  const [strokeTransition, setStrokeTransition] = useState("none");
-  const [dotX, setDotX] = useState(0);
-  const [dotY, setDotY] = useState(100);
-  const [dotTransition, setDotTransition] = useState("none");
-  const [dotVisible, setDotVisible] = useState(false);
+  // Trace: four sides [left, top, right, bottom], each 0–100
+  const [traceSides, setTraceSides] = useState([0, 0, 0, 0]);
+  const [traceTransitions, setTraceTransitions] = useState(["none", "none", "none", "none"]);
+  // Cursor dot position (% of box container)
+  const [dotPos, setDotPos] = useState<[number, number]>([0, 100]);
+  const [dotTrans, setDotTrans] = useState("none");
+  const [dotOn, setDotOn] = useState(false);
   const [successParticles, setSuccessParticles] = useState(false);
 
   const audioRef = useRef<AudioEngine | null>(null);
@@ -227,55 +228,72 @@ export default function BoxApp() {
     if (!mutedRef.current) audioRef.current?.playTransition(phase.type);
     vibrate(phase.type === "inhale" || phase.type === "exhale" ? [30] : [10, 30, 10]);
 
-    // Trace line — one side per phase, resets each rep
-    // Dot end positions per phase:
-    //   0 inhale:     (0,100) → (0,0)     up left side
-    //   1 hold-full:  (0,0)   → (100,0)   across top
-    //   2 exhale:     (100,0) → (100,100)  down right side
-    //   3 hold-empty: (100,100) → (0,100)  across bottom
-    const DOT_ENDS: [number, number][] = [
-      [0, 0],
-      [100, 0],
-      [100, 100],
-      [0, 100],
-    ];
-    const DOT_STARTS: [number, number][] = [
-      [0, 100],
-      [0, 0],
-      [100, 0],
-      [100, 100],
-    ];
+    // ── Trace line: four CSS divs, one per box side ──
+    //  Side 0 (left)   grows bottom→top   = height transition
+    //  Side 1 (top)    grows left→right   = width transition
+    //  Side 2 (right)  grows top→bottom   = height transition
+    //  Side 3 (bottom) grows right→left   = width transition
+    //
+    //  Dot start → end per phase:
+    //   0: (0%,100%) → (0%,0%)       up left
+    //   1: (0%,0%)   → (100%,0%)     across top
+    //   2: (100%,0%) → (100%,100%)   down right
+    //   3: (100%,100%) → (0%,100%)   across bottom
+
+    const DOT_START: [number, number][] = [[0,100],[0,0],[100,0],[100,100]];
+    const DOT_END: [number, number][] = [[0,0],[100,0],[100,100],[0,100]];
+    const SIDE_PROP = ["height", "width", "height", "width"];
 
     const phaseIdx = phaseRef.current;
+
     if (phaseIdx === 0) {
-      // New rep: reset stroke + dot instantly, then animate
-      setStrokeTransition("none");
-      setStrokeOffset(4);
-      setDotTransition("none");
-      setDotX(DOT_STARTS[0][0]);
-      setDotY(DOT_STARTS[0][1]);
-      setDotVisible(true);
+      // New rep — reset all four sides instantly
+      setTraceSides([0, 0, 0, 0]);
+      setTraceTransitions(["none", "none", "none", "none"]);
+      setDotTrans("none");
+      setDotPos(DOT_START[0]);
+      setDotOn(true);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          setStrokeTransition(`stroke-dashoffset ${boxTime}s linear`);
-          setStrokeOffset(3);
-          setDotTransition(`left ${boxTime}s linear, top ${boxTime}s linear`);
-          setDotX(DOT_ENDS[0][0]);
-          setDotY(DOT_ENDS[0][1]);
+          const t = [...["none", "none", "none", "none"]];
+          t[0] = `${SIDE_PROP[0]} ${boxTime}s linear`;
+          setTraceTransitions(t);
+          setTraceSides([100, 0, 0, 0]);
+          setDotTrans(`left ${boxTime}s linear, top ${boxTime}s linear`);
+          setDotPos(DOT_END[0]);
         });
       });
     } else {
-      setStrokeTransition(`stroke-dashoffset ${boxTime}s linear`);
-      setStrokeOffset(4 - (phaseIdx + 1));
-      // Dot: snap to start of this side (should already be there), animate to end
-      setDotTransition("none");
-      setDotX(DOT_STARTS[phaseIdx][0]);
-      setDotY(DOT_STARTS[phaseIdx][1]);
+      // Continue rep — lock previous sides at 100, reset current side to 0
+      setTraceSides(prev => {
+        const next = [...prev];
+        for (let i = 0; i < phaseIdx; i++) next[i] = 100;
+        next[phaseIdx] = 0;
+        return next;
+      });
+      setTraceTransitions(prev => {
+        const next = [...prev];
+        for (let i = 0; i < phaseIdx; i++) next[i] = "none";
+        next[phaseIdx] = "none";
+        return next;
+      });
+      // Snap dot to start of this side
+      setDotTrans("none");
+      setDotPos(DOT_START[phaseIdx]);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          setDotTransition(`left ${boxTime}s linear, top ${boxTime}s linear`);
-          setDotX(DOT_ENDS[phaseIdx][0]);
-          setDotY(DOT_ENDS[phaseIdx][1]);
+          setTraceSides(prev => {
+            const next = [...prev];
+            next[phaseIdx] = 100;
+            return next;
+          });
+          setTraceTransitions(prev => {
+            const next = [...prev];
+            next[phaseIdx] = `${SIDE_PROP[phaseIdx]} ${boxTime}s linear`;
+            return next;
+          });
+          setDotTrans(`left ${boxTime}s linear, top ${boxTime}s linear`);
+          setDotPos(DOT_END[phaseIdx]);
         });
       });
     }
@@ -341,12 +359,11 @@ export default function BoxApp() {
     setFillTransition("height 0.4s ease-out");
     setFillHeight(0);
     // Reset trace + dot
-    setStrokeOffset(4);
-    setStrokeTransition("none");
-    setDotVisible(false);
-    setDotTransition("none");
-    setDotX(0);
-    setDotY(100);
+    setTraceSides([0, 0, 0, 0]);
+    setTraceTransitions(["none", "none", "none", "none"]);
+    setDotOn(false);
+    setDotTrans("none");
+    setDotPos([0, 100]);
     sessionStartRef.current = Date.now();
     setState("running");
     setTimeout(() => runPhase(), 50);
@@ -372,12 +389,11 @@ export default function BoxApp() {
     setFillTransition("height 1.5s ease-out");
     setFillHeight(100);
     // Reset trace + dot
-    setStrokeOffset(4);
-    setStrokeTransition("none");
-    setDotVisible(false);
-    setDotTransition("none");
-    setDotX(0);
-    setDotY(100);
+    setTraceSides([0, 0, 0, 0]);
+    setTraceTransitions(["none", "none", "none", "none"]);
+    setDotOn(false);
+    setDotTrans("none");
+    setDotPos([0, 100]);
     setSuccessParticles(false);
     setState("idle");
   }, [clearTimers]);
@@ -1030,7 +1046,7 @@ export default function BoxApp() {
           position: "relative",
         }}
       >
-        {/* Breathing box — background geometry */}
+        {/* Breathing box */}
         <div
           style={{
             position: "absolute",
@@ -1040,18 +1056,17 @@ export default function BoxApp() {
             maxHeight: 360,
           }}
         >
-          {/* Static border */}
+          {/* Ghost border — always visible, faint */}
           <div
             style={{
               position: "absolute",
               inset: 0,
               border: "1px solid var(--border)",
-              opacity: isActive ? 0.15 : 0.3,
-              transition: "opacity 0.5s",
+              opacity: 0.25,
               overflow: "hidden",
             }}
           >
-            {/* Idle fill — visible when not breathing */}
+            {/* Idle fill */}
             <div
               style={{
                 position: "absolute",
@@ -1066,44 +1081,57 @@ export default function BoxApp() {
             />
           </div>
 
-          {/* Trace line SVG — draws one side per phase */}
-          <svg
-            viewBox="0 0 100 100"
-            fill="none"
+          {/* ── Trace lines: four divs, one per side ── */}
+          {/* Side 0 — Left: grows bottom → top */}
+          <div
             style={{
               position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              opacity: isActive || isPaused ? 1 : 0,
-              transition: "opacity 0.4s",
+              left: 0,
+              bottom: 0,
+              width: 2,
+              height: `${traceSides[0]}%`,
+              background: "var(--accent)",
+              transition: traceTransitions[0],
             }}
-          >
-            {/* Ghost path — faint outline of full box */}
-            <path
-              d="M 0 100 L 0 0 L 100 0 L 100 100 Z"
-              stroke="var(--accent)"
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-              fill="none"
-              opacity="0.1"
-            />
-            {/* Active trace — draws progressively */}
-            <path
-              d="M 0 100 L 0 0 L 100 0 L 100 100 L 0 100"
-              pathLength={4}
-              stroke="var(--accent)"
-              strokeWidth="2"
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="square"
-              fill="none"
-              strokeDasharray="4"
-              strokeDashoffset={strokeOffset}
-              style={{ transition: strokeTransition }}
-            />
-          </svg>
+          />
+          {/* Side 1 — Top: grows left → right */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              height: 2,
+              width: `${traceSides[1]}%`,
+              background: "var(--accent)",
+              transition: traceTransitions[1],
+            }}
+          />
+          {/* Side 2 — Right: grows top → bottom */}
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              width: 2,
+              height: `${traceSides[2]}%`,
+              background: "var(--accent)",
+              transition: traceTransitions[2],
+            }}
+          />
+          {/* Side 3 — Bottom: grows right → left */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              right: 0,
+              height: 2,
+              width: `${traceSides[3]}%`,
+              background: "var(--accent)",
+              transition: traceTransitions[3],
+            }}
+          />
 
-          {/* Cursor dot — leads the trace */}
+          {/* Cursor dot — rides the leading edge */}
           <div
             style={{
               position: "absolute",
@@ -1111,12 +1139,13 @@ export default function BoxApp() {
               height: 8,
               borderRadius: "50%",
               background: "var(--accent)",
-              boxShadow: "0 0 12px 2px var(--accent-dim)",
+              boxShadow: "0 0 10px 2px var(--accent-dim)",
+              left: `${dotPos[0]}%`,
+              top: `${dotPos[1]}%`,
               transform: "translate(-50%, -50%)",
-              left: `${dotX}%`,
-              top: `${dotY}%`,
-              transition: dotTransition,
-              opacity: dotVisible && (isActive || isPaused) ? 1 : 0,
+              transition: dotTrans,
+              opacity: dotOn && (isActive || isPaused) ? 1 : 0,
+              pointerEvents: "none",
               zIndex: 2,
             }}
           />
