@@ -180,8 +180,12 @@ export default function BoxApp() {
   const [currentRep, setCurrentRep] = useState(0);
   const [fillHeight, setFillHeight] = useState(0);
   const [fillTransition, setFillTransition] = useState("none");
-  const [strokeOffset, setStrokeOffset] = useState(400);
+  const [strokeOffset, setStrokeOffset] = useState(4);
   const [strokeTransition, setStrokeTransition] = useState("none");
+  const [dotX, setDotX] = useState(0);
+  const [dotY, setDotY] = useState(100);
+  const [dotTransition, setDotTransition] = useState("none");
+  const [dotVisible, setDotVisible] = useState(false);
   const [successParticles, setSuccessParticles] = useState(false);
 
   const audioRef = useRef<AudioEngine | null>(null);
@@ -195,6 +199,11 @@ export default function BoxApp() {
 
   useEffect(() => {
     audioRef.current = new AudioEngine();
+    // Idle intro fill — box fills on mount
+    requestAnimationFrame(() => {
+      setFillTransition("height 2s ease-out");
+      setFillHeight(100);
+    });
   }, []);
 
   useEffect(() => {
@@ -219,29 +228,56 @@ export default function BoxApp() {
     vibrate(phase.type === "inhale" || phase.type === "exhale" ? [30] : [10, 30, 10]);
 
     // Trace line — one side per phase, resets each rep
+    // Dot end positions per phase:
+    //   0 inhale:     (0,100) → (0,0)     up left side
+    //   1 hold-full:  (0,0)   → (100,0)   across top
+    //   2 exhale:     (100,0) → (100,100)  down right side
+    //   3 hold-empty: (100,100) → (0,100)  across bottom
+    const DOT_ENDS: [number, number][] = [
+      [0, 0],
+      [100, 0],
+      [100, 100],
+      [0, 100],
+    ];
+    const DOT_STARTS: [number, number][] = [
+      [0, 100],
+      [0, 0],
+      [100, 0],
+      [100, 100],
+    ];
+
     const phaseIdx = phaseRef.current;
     if (phaseIdx === 0) {
-      // New rep: reset instantly, then animate first side
+      // New rep: reset stroke + dot instantly, then animate
       setStrokeTransition("none");
-      setStrokeOffset(400);
+      setStrokeOffset(4);
+      setDotTransition("none");
+      setDotX(DOT_STARTS[0][0]);
+      setDotY(DOT_STARTS[0][1]);
+      setDotVisible(true);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setStrokeTransition(`stroke-dashoffset ${boxTime}s linear`);
-          setStrokeOffset(300);
+          setStrokeOffset(3);
+          setDotTransition(`left ${boxTime}s linear, top ${boxTime}s linear`);
+          setDotX(DOT_ENDS[0][0]);
+          setDotY(DOT_ENDS[0][1]);
         });
       });
     } else {
       setStrokeTransition(`stroke-dashoffset ${boxTime}s linear`);
-      setStrokeOffset(400 - (phaseIdx + 1) * 100);
-    }
-
-    // Fill animation
-    if (phase.type === "inhale") {
-      setFillTransition(`height ${boxTime}s linear`);
-      setTimeout(() => setFillHeight(100), 20);
-    } else if (phase.type === "exhale") {
-      setFillTransition(`height ${boxTime}s linear`);
-      setTimeout(() => setFillHeight(0), 20);
+      setStrokeOffset(4 - (phaseIdx + 1));
+      // Dot: snap to start of this side (should already be there), animate to end
+      setDotTransition("none");
+      setDotX(DOT_STARTS[phaseIdx][0]);
+      setDotY(DOT_STARTS[phaseIdx][1]);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setDotTransition(`left ${boxTime}s linear, top ${boxTime}s linear`);
+          setDotX(DOT_ENDS[phaseIdx][0]);
+          setDotY(DOT_ENDS[phaseIdx][1]);
+        });
+      });
     }
 
     // Countdown ticker
@@ -301,10 +337,16 @@ export default function BoxApp() {
     repRef.current = 0;
     setCurrentRep(0);
     setCurrentPhase(0);
+    // Drop the idle fill
+    setFillTransition("height 0.4s ease-out");
     setFillHeight(0);
-    setFillTransition("none");
-    setStrokeOffset(400);
+    // Reset trace + dot
+    setStrokeOffset(4);
     setStrokeTransition("none");
+    setDotVisible(false);
+    setDotTransition("none");
+    setDotX(0);
+    setDotY(100);
     sessionStartRef.current = Date.now();
     setState("running");
     setTimeout(() => runPhase(), 50);
@@ -326,10 +368,16 @@ export default function BoxApp() {
   const resetSession = useCallback(() => {
     runningRef.current = false;
     clearTimers();
-    setFillHeight(0);
-    setFillTransition("none");
-    setStrokeOffset(400);
+    // Restore idle fill
+    setFillTransition("height 1.5s ease-out");
+    setFillHeight(100);
+    // Reset trace + dot
+    setStrokeOffset(4);
     setStrokeTransition("none");
+    setDotVisible(false);
+    setDotTransition("none");
+    setDotX(0);
+    setDotY(100);
     setSuccessParticles(false);
     setState("idle");
   }, [clearTimers]);
@@ -998,12 +1046,12 @@ export default function BoxApp() {
               position: "absolute",
               inset: 0,
               border: "1px solid var(--border)",
-              opacity: isActive ? 0.6 : 0.3,
+              opacity: isActive ? 0.15 : 0.3,
               transition: "opacity 0.5s",
               overflow: "hidden",
             }}
           >
-            {/* Fill */}
+            {/* Idle fill — visible when not breathing */}
             <div
               style={{
                 position: "absolute",
@@ -1011,9 +1059,9 @@ export default function BoxApp() {
                 left: 0,
                 width: "100%",
                 background: "var(--accent)",
-                opacity: 0.06,
+                opacity: isActive || isPaused ? 0 : 0.04,
                 height: `${fillHeight}%`,
-                transition: fillTransition,
+                transition: `${fillTransition}, opacity 0.4s`,
               }}
             />
           </div>
@@ -1022,28 +1070,56 @@ export default function BoxApp() {
           <svg
             viewBox="0 0 100 100"
             fill="none"
-            preserveAspectRatio="none"
             style={{
               position: "absolute",
-              inset: -1,
-              width: "calc(100% + 2px)",
-              height: "calc(100% + 2px)",
+              inset: 0,
+              width: "100%",
+              height: "100%",
               opacity: isActive || isPaused ? 1 : 0,
               transition: "opacity 0.4s",
-              overflow: "visible",
             }}
           >
+            {/* Ghost path — faint outline of full box */}
+            <path
+              d="M 0 100 L 0 0 L 100 0 L 100 100 Z"
+              stroke="var(--accent)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+              fill="none"
+              opacity="0.1"
+            />
+            {/* Active trace — draws progressively */}
             <path
               d="M 0 100 L 0 0 L 100 0 L 100 100 L 0 100"
+              pathLength={4}
               stroke="var(--accent)"
-              strokeWidth="1.2"
+              strokeWidth="2"
               vectorEffect="non-scaling-stroke"
               strokeLinecap="square"
-              strokeDasharray="400"
+              fill="none"
+              strokeDasharray="4"
               strokeDashoffset={strokeOffset}
               style={{ transition: strokeTransition }}
             />
           </svg>
+
+          {/* Cursor dot — leads the trace */}
+          <div
+            style={{
+              position: "absolute",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "var(--accent)",
+              boxShadow: "0 0 12px 2px var(--accent-dim)",
+              transform: "translate(-50%, -50%)",
+              left: `${dotX}%`,
+              top: `${dotY}%`,
+              transition: dotTransition,
+              opacity: dotVisible && (isActive || isPaused) ? 1 : 0,
+              zIndex: 2,
+            }}
+          />
         </div>
 
         {/* Pulse ring on phase change */}
