@@ -1425,17 +1425,26 @@ export default function BoxApp() {
       >
         <div
           style={{
-            display: "inline-block",
-            animation: "marquee 20s linear infinite",
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: "0.15em",
-            color: "var(--muted)",
-            textTransform: "uppercase",
+            display: "flex",
+            width: "fit-content",
+            animation: "marquee 30s linear infinite",
           }}
         >
-          FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot;&nbsp;
-          FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot;&nbsp;
+          {[0, 1].map((i) => (
+            <span
+              key={i}
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.15em",
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                paddingRight: 0,
+              }}
+            >
+              FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot; FOCUS &middot; BREATHE &middot; HOLD &middot; RELEASE &middot;&nbsp;
+            </span>
+          ))}
         </div>
       </div>
     </div>
